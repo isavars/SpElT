@@ -537,6 +537,7 @@ class ephys:  # noqa: N801
                     xy_pos, speed, direction_disp = postprocess_bonsai_jake(
                     raw_pos_data, self.max_speed, self.smoothing_window_size
                     )
+                    xy_pos.columns = ttl_times - ttl_times[0]
 
                     pos_sampling_rate = raw_pos_data["sampling_rate"]
 

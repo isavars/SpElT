@@ -146,8 +146,8 @@ def load_pos_bonsai_isa(path, ppm, trial_type):
     data = data.iloc[1:]
 
     # Add if statement to check if the ppm is in the sheet or not
-    if 'Value.Item1.Item5.Item1' in data.columns:
-        # Extract the first value from the column (since it's consistent)
+    if 'Value.Item1.Item5.Item1' in data.columns: #csv file column name hc until i figure out how to label columns on bonsai
+        # Extract the first value from the column (since it's consistent down the column)
         ppm_value_from_csv = data['Value.Item1.Item5.Item1'].iloc[0]
         ppm_values = {
             'baseline': ppm_value_from_csv,
@@ -180,7 +180,7 @@ def load_pos_bonsai_isa(path, ppm, trial_type):
     # Remove probable tracking errors based on speed threshold
     max_speed = 4.0  #  max speed in meters/second based on LM scanpix
     valid_indices = [x1.notna(), x2.notna()]
-    for i, (x, y) in enumerate([(x1, y1), (x2, y2)]):
+    for i, (x, y) in enumerate([(x1.copy(), y1.copy()), (x2.copy(), y2.copy())]):
         valid_pos = np.where(valid_indices[i])[0]
         prev_pos = valid_pos[0]
         for j in valid_pos[1:]:
@@ -190,6 +190,8 @@ def load_pos_bonsai_isa(path, ppm, trial_type):
                 y.iloc[j] = np.nan
             else:
                 prev_pos = j
+    # Debugging: Check valid positions after speed filtering
+    print(f"Valid positions after speed filtering: x1={x1.notna().sum()}, y1={y1.notna().sum()}, x2={x2.notna().sum()}, y2={y2.notna().sum()}")
 
     # Handle dodgy samples based on LED distance
     led_distance = np.sqrt((x1 - x2)**2 + (y1 - y2)**2)
@@ -201,9 +203,13 @@ def load_pos_bonsai_isa(path, ppm, trial_type):
     else:
         x2[led_distance > max_distance] = np.nan
         y2[led_distance > max_distance] = np.nan
-
+    # Debugging: Check valid positions after LED distance filtering
+    print(f"Valid positions after LED distance filtering: x1={x1.notna().sum()}, y1={y1.notna().sum()}, x2={x2.notna().sum()}, y2={y2.notna().sum()}")
+    
+    # Debugging: Check valid positions before interpolation
+    print(f"Valid positions before interpolation: x1={x1.notna().sum()}, y1={y1.notna().sum()}, x2={x2.notna().sum()}, y2={y2.notna().sum()}")
     # Interpolate missing positions
-    for x, y in [(x1, y1), (x2, y2)]:
+    for x, y in [(x1.copy(), y1.copy()), (x2.copy(), y2.copy())]:
         missing_pos = np.where(x.isna())[0]
         valid_pos = np.where(x.notna())[0]
         for i in missing_pos:
@@ -216,8 +222,12 @@ def load_pos_bonsai_isa(path, ppm, trial_type):
             else:
                 x.iloc[i] = np.interp(i, valid_pos, x.iloc[valid_pos])
                 y.iloc[i] = np.interp(i, valid_pos, y.iloc[valid_pos])
+    # Debugging: Check valid positions after interpolation
+    print(f"Valid positions after interpolation: x1={x1.notna().sum()}, y1={y1.notna().sum()}, x2={x2.notna().sum()}, y2={y2.notna().sum()}")
 
-    # Compute midpoint where both values are present
+   # Debugging: Check valid positions before midpoint calculation
+    print(f"Valid positions before midpoint calculation: x1={x1.notna().sum()}, y1={y1.notna().sum()}, x2={x2.notna().sum()}, y2={y2.notna().sum()}")
+   # Compute midpoint where both values are present
     mid_x = np.where(x1.notna() & x2.notna(), (x1 + x2) / 2, np.nan)
     mid_y = np.where(y1.notna() & y2.notna(), (y1 + y2) / 2, np.nan)
 
@@ -231,6 +241,9 @@ def load_pos_bonsai_isa(path, ppm, trial_type):
     mid_x = pd.Series(mid_x).interpolate(method='linear', limit_direction='both')
     mid_y = pd.Series(mid_y).interpolate(method='linear', limit_direction='both')
 
+    # Debugging: Check midpoint validity
+    print(f"Midpoint validity: mid_x={np.isnan(mid_x).sum()} NaNs, mid_y={np.isnan(mid_y).sum()} NaNs")
+    
     # Store final position estimate (formatted for compatibility)
     position = pd.DataFrame({'Mid.X': mid_x, 'Mid.Y': mid_y}).T
     
@@ -260,18 +273,20 @@ def load_pos_bonsai_isa(path, ppm, trial_type):
     pointgrey_timestamps = time + cycleindex * 128
     pointgrey_timestamps = pointgrey_timestamps - min(pointgrey_timestamps)
 
-    # Estimate sampling rate
-    sampling_rate = 1 / np.mean(np.diff(pointgrey_timestamps))
 
-    print(pointgrey_timestamps)
+
+    #print(pointgrey_timestamps)
 
     # Parse bonsai timestamps
     bonsai_timestamps = bonsai_timestamps.apply(lambda x: parser.isoparse(x))
     bonsai_timestamps = bonsai_timestamps - bonsai_timestamps.iloc[0]
     bonsai_timestamps = bonsai_timestamps.apply(lambda x: x.total_seconds())
     start_time = bonsai_timestamps.iloc[0]
+    
+    # Estimate sampling rate
+    sampling_rate = 1 / np.mean(np.diff(bonsai_timestamps))
 
-    position.columns = pointgrey_timestamps
+    position.columns = bonsai_timestamps
 
     raw_pos_data = {
         'pos': position,
